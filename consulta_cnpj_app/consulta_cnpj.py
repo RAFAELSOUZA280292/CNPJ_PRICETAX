@@ -98,7 +98,9 @@ if "authenticated" not in st.session_state:
 
 # Se o usuário não está autenticado, mostra a tela de login
 if not st.session_state["authenticated"]:
-    # st.image("caminho/para/seu/logo.png", width=150) # Substitua pelo caminho do seu logo, se tiver um
+    # IMAGEM NA PÁGINA DE LOGIN
+    # O caminho da imagem deve ser relativo à raiz do seu repositório no GitHub
+    st.image('images/logo_login.png', width=200) # Ajuste a largura conforme necessário
     st.markdown("<h1 style='text-align: center;'>Bem-vindo à Consulta CNPJ</h1>", unsafe_allow_html=True)
     st.markdown("<h2 style='text-align: center;'>Acesso Restrito</h2>", unsafe_allow_html=True)
 
@@ -113,8 +115,9 @@ if not st.session_state["authenticated"]:
             st.error("Senha incorreta. Tente novamente.")
 else:
     # --- Aplicação Principal (Após Autenticação) ---
+    # IMAGEM NA PÁGINA DE CONSULTA (Topo)
+    st.image('images/logo_main.png', width=150) # Ajuste a largura conforme necessário
     st.markdown("<h1 style='text-align: center;'>Consulta de CNPJ</h1>", unsafe_allow_html=True)
-    # st.image("caminho/para/seu/logo.png", width=100) # Substitua pelo caminho do seu logo, talvez no canto superior
 
     cnpj_input = st.text_input(
         "Digite o CNPJ (apenas números, ou com pontos, barras e traços):",
@@ -150,6 +153,8 @@ else:
                              st.error("CNPJ não encontrado ou houve um problema inesperado na resposta da API. Tente novamente mais tarde ou verifique o CNPJ.")
                         else:
                             st.success(f"Dados encontrados para o CNPJ: {dados_cnpj.get('cnpj', 'N/A')}")
+                            # IMAGEM NA PÁGINA DE RESULTADO (Após o sucesso da consulta)
+                            st.image('images/logo_resultado.png', width=100) # Ajuste a largura conforme necessário
 
                             st.markdown("---")
                             st.markdown("## Dados da Empresa")
@@ -232,10 +237,6 @@ else:
                             if dados_cnpj.get('regime_tributario'):
                                 st.markdown("## Regime Tributário (Histórico)")
                                 for i, regime in enumerate(dados_cnpj['regime_tributario']):
-                                    # Usa um expander para cada ano, se a lista for longa, ou apenas st.write se for curta.
-                                    # Para manter a organização, um expander pode ser bom, ou um simples bullet point
-                                    # dependendo da quantidade esperada de anos.
-                                    # Para o exemplo fornecido, um simples st.write em formato de lista pode ser mais direto.
                                     st.write(f"**Ano:** {regime.get('ano', 'N/A')}")
                                     st.write(f"**Forma de Tributação:** {regime.get('forma_de_tributacao', 'N/A')}")
                                     st.write(f"**Qtd. Escriturações:** {regime.get('quantidade_de_escrituracoes', 'N/A')}")

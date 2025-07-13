@@ -228,6 +228,23 @@ else:
                             else:
                                 st.info("Não há CNAEs secundários informados para este CNPJ.")
 
+                            st.markdown("---") # Adiciona uma nova linha divisória
+                            if dados_cnpj.get('regime_tributario'):
+                                st.markdown("## Regime Tributário (Histórico)")
+                                for i, regime in enumerate(dados_cnpj['regime_tributario']):
+                                    # Usa um expander para cada ano, se a lista for longa, ou apenas st.write se for curta.
+                                    # Para manter a organização, um expander pode ser bom, ou um simples bullet point
+                                    # dependendo da quantidade esperada de anos.
+                                    # Para o exemplo fornecido, um simples st.write em formato de lista pode ser mais direto.
+                                    st.write(f"**Ano:** {regime.get('ano', 'N/A')}")
+                                    st.write(f"**Forma de Tributação:** {regime.get('forma_de_tributacao', 'N/A')}")
+                                    st.write(f"**Qtd. Escriturações:** {regime.get('quantidade_de_escrituracoes', 'N/A')}")
+                                    if i < len(dados_cnpj['regime_tributario']) - 1: # Adiciona uma linha entre os regimes
+                                        st.markdown("---")
+                            else:
+                                st.info("Não há informações de Regime Tributário disponíveis para este CNPJ.")
+
+
                     except requests.exceptions.Timeout:
                         st.error("Tempo limite da requisição excedido. A API não respondeu a tempo. Tente novamente mais tarde.")
                     except requests.exceptions.ConnectionError:

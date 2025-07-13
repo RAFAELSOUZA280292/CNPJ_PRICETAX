@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
-import re # Usado para limpar o CNPJ de caracteres não numéricos
+import re
+from pathlib import Path # Importar pathlib
 
 # --- Configuração da Aplicação ---
 SENHA_ACESSO = "Ivana_2025"
@@ -91,6 +92,14 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True) # Permite a interpretação do HTML/CSS
 
+# --- Lógica de Caminho para Imagens ---
+# __file__ é o caminho do script atual (e.g., /mount/src/cnpj_pricetax/consulta_cnpj_app/consulta_cnpj.py)
+# Path(__file__).resolve() garante o caminho completo e resolvido.
+# .parent pega o diretório pai (e.g., /mount/src/cnpj_pricetax/consulta_cnpj_app/)
+# .parent novamente sobe para o diretório raiz do repositório (e.g., /mount/src/cnpj_pricetax/)
+# / "images" anexa a pasta images (e.g., /mount/src/cnpj_pricetax/images/)
+IMAGE_DIR = Path(__file__).resolve().parent.parent / "images"
+
 # --- Lógica de Autenticação ---
 # Inicializa o estado de autenticação na sessão, se ainda não existir
 if "authenticated" not in st.session_state:
@@ -99,8 +108,8 @@ if "authenticated" not in st.session_state:
 # Se o usuário não está autenticado, mostra a tela de login
 if not st.session_state["authenticated"]:
     # IMAGEM NA PÁGINA DE LOGIN
-    # O caminho da imagem agora é '../images/' para voltar um nível e acessar a pasta 'images'
-    st.image('../images/logo_login.png', width=200) # Ajuste a largura conforme necessário
+    # Usamos o f-string com IMAGE_DIR e o nome da imagem
+    st.image(f"{IMAGE_DIR}/logo_login.png", width=200) # Ajuste a largura conforme necessário
     st.markdown("<h1 style='text-align: center;'>Bem-vindo à Consulta CNPJ</h1>", unsafe_allow_html=True)
     st.markdown("<h2 style='text-align: center;'>Acesso Restrito</h2>", unsafe_allow_html=True)
 
@@ -116,8 +125,7 @@ if not st.session_state["authenticated"]:
 else:
     # --- Aplicação Principal (Após Autenticação) ---
     # IMAGEM NA PÁGINA DE CONSULTA (Topo)
-    # Caminho ajustado
-    st.image('../images/logo_main.png', width=150) # Ajuste a largura conforme necessário
+    st.image(f"{IMAGE_DIR}/logo_main.png", width=150) # Ajuste a largura conforme necessário
     st.markdown("<h1 style='text-align: center;'>Consulta de CNPJ</h1>", unsafe_allow_html=True)
 
     cnpj_input = st.text_input(
@@ -155,8 +163,7 @@ else:
                         else:
                             st.success(f"Dados encontrados para o CNPJ: {dados_cnpj.get('cnpj', 'N/A')}")
                             # IMAGEM NA PÁGINA DE RESULTADO (Após o sucesso da consulta)
-                            # Caminho ajustado
-                            st.image('../images/logo_resultado.png', width=100) # Ajuste a largura conforme necessário
+                            st.image(f"{IMAGE_DIR}/logo_resultado.png", width=100) # Ajuste a largura conforme necessário
 
                             st.markdown("---")
                             st.markdown("## Dados da Empresa")
@@ -182,7 +189,7 @@ else:
 
                                 # Exibe telefones, concatenando DDD e número
                                 telefone1_ddd = dados_cnpj.get('ddd_telefone_1')
-                                telefone1_num = dados_cnpj.get('telefone_2') # Ajustado, a BrasilAPI costuma ter "telefone_1" e "telefone_2"
+                                telefone1_num = dados_cnpj.get('telefone_1')
                                 if telefone1_ddd and telefone1_num:
                                     st.write(f"**Telefone:** ({telefone1_ddd}) {telefone1_num}")
                                 else:

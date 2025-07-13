@@ -99,8 +99,8 @@ if "authenticated" not in st.session_state:
 # Se o usuário não está autenticado, mostra a tela de login
 if not st.session_state["authenticated"]:
     # IMAGEM NA PÁGINA DE LOGIN
-    # O caminho da imagem deve ser relativo à raiz do seu repositório no GitHub
-    st.image('images/logo_login.png', width=200) # Ajuste a largura conforme necessário
+    # O caminho da imagem agora é '../images/' para voltar um nível e acessar a pasta 'images'
+    st.image('../images/logo_login.png', width=200) # Ajuste a largura conforme necessário
     st.markdown("<h1 style='text-align: center;'>Bem-vindo à Consulta CNPJ</h1>", unsafe_allow_html=True)
     st.markdown("<h2 style='text-align: center;'>Acesso Restrito</h2>", unsafe_allow_html=True)
 
@@ -116,7 +116,8 @@ if not st.session_state["authenticated"]:
 else:
     # --- Aplicação Principal (Após Autenticação) ---
     # IMAGEM NA PÁGINA DE CONSULTA (Topo)
-    st.image('images/logo_main.png', width=150) # Ajuste a largura conforme necessário
+    # Caminho ajustado
+    st.image('../images/logo_main.png', width=150) # Ajuste a largura conforme necessário
     st.markdown("<h1 style='text-align: center;'>Consulta de CNPJ</h1>", unsafe_allow_html=True)
 
     cnpj_input = st.text_input(
@@ -154,7 +155,8 @@ else:
                         else:
                             st.success(f"Dados encontrados para o CNPJ: {dados_cnpj.get('cnpj', 'N/A')}")
                             # IMAGEM NA PÁGINA DE RESULTADO (Após o sucesso da consulta)
-                            st.image('images/logo_resultado.png', width=100) # Ajuste a largura conforme necessário
+                            # Caminho ajustado
+                            st.image('../images/logo_resultado.png', width=100) # Ajuste a largura conforme necessário
 
                             st.markdown("---")
                             st.markdown("## Dados da Empresa")
@@ -180,7 +182,7 @@ else:
 
                                 # Exibe telefones, concatenando DDD e número
                                 telefone1_ddd = dados_cnpj.get('ddd_telefone_1')
-                                telefone1_num = dados_cnpj.get('telefone_1')
+                                telefone1_num = dados_cnpj.get('telefone_2') # Ajustado, a BrasilAPI costuma ter "telefone_1" e "telefone_2"
                                 if telefone1_ddd and telefone1_num:
                                     st.write(f"**Telefone:** ({telefone1_ddd}) {telefone1_num}")
                                 else:

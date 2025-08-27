@@ -3,7 +3,7 @@ import requests
 import re
 from pathlib import Path
 import time
-import datetime  # <— novo
+import datetime  # necessário para ano atual
 
 # =========================
 # Config da página / tema
@@ -18,7 +18,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (igual ao primeiro app)
+# CSS (tema escuro do primeiro app)
 # =========================
 st.markdown("""
 <style>
@@ -143,27 +143,39 @@ if st.button("Consultar CNPJ"):
                         st.success(f"Dados encontrados para o CNPJ: {format_cnpj_mask(dados_cnpj.get('cnpj','N/A'))}")
                         st.image(str(IMAGE_DIR / "logo_resultado.png"), width=100)
 
-                        # ======== 1) REGIME TRIBUTÁRIO (no topo, só o ano mais recente) ========
+                        # ======== 1) REGIME TRIBUTÁRIO (UNIFICADO) ========
                         st.markdown("---")
                         st.markdown("## Regime Tributário")
-                        regimes = dados_cnpj.get('regime_tributario') or []
-                        if not regimes:
-                            st.info("Não há informações de Regime Tributário disponíveis para este CNPJ.")
-                        else:
-                            # pega o ano mais recente disponível (de preferência <= ano atual)
-                            current_year = datetime.date.today().year
+
+                        # flags Simples/MEI
+                        is_mei = dados_cnpj.get("opcao_pelo_mei")
+                        is_simples = dados_cnpj.get("opcao_pelo_simples")
+
+                        regimes = dados_cnpj.get("regime_tributario") or []
+                        current_year = datetime.date.today().year
+
+                        if is_mei:
+                            regime_final = "MEI"
+                            ano_base = current_year
+                        elif is_simples:
+                            regime_final = "SIMPLES NACIONAL"
+                            ano_base = current_year
+                        elif regimes:
                             anos = [r.get("ano") for r in regimes if isinstance(r.get("ano"), int)]
-                            if not anos:
-                                # fallback: mostra a primeira forma se não tiver ano válido
-                                forma = (regimes[-1] or {}).get("forma_de_tributacao", "N/A")
-                                st.write(f"**Forma de Tributação:** {str(forma).upper()} (BASEADO EM N/A)")
-                            else:
+                            if anos:
                                 candidatos = [a for a in anos if a <= current_year]
                                 alvo = max(candidatos) if candidatos else max(anos)
-                                # pega o último regime que tenha esse ano
                                 regime_alvo = next((r for r in reversed(regimes) if r.get("ano") == alvo), regimes[-1])
-                                forma = (regime_alvo or {}).get("forma_de_tributacao", "N/A")
-                                st.write(f"**Forma de Tributação:** {str(forma).upper()} (BASEADO EM {alvo})")
+                                regime_final = (regime_alvo or {}).get("forma_de_tributacao", "N/A")
+                                ano_base = alvo
+                            else:
+                                regime_final = (regimes[-1] or {}).get("forma_de_tributacao", "N/A")
+                                ano_base = "N/A"
+                        else:
+                            regime_final = "N/A"
+                            ano_base = "N/A"
+
+                        st.write(f"**Forma de Tributação:** {str(regime_final).upper()} (BASEADO EM {ano_base})")
 
                         # ======== 2) DADOS DA EMPRESA ========
                         st.markdown("---")
@@ -185,8 +197,7 @@ if st.button("Consultar CNPJ"):
                             if tel2 != "N/A":
                                 st.write(f"**Telefone 2:** {tel2}")
                             st.write(f"**Email:** {dados_cnpj.get('email', 'N/A')}")
-                            st.write(f"**Opção pelo Simples:** {'Sim' if dados_cnpj.get('opcao_pelo_simples') else ('Não' if dados_cnpj.get('opcao_pelo_simples') is False else 'N/A')}")
-                            st.write(f"**Opção pelo MEI:** {'Sim' if dados_cnpj.get('opcao_pelo_mei') else ('Não' if dados_cnpj.get('opcao_pelo_mei') is False else 'N/A')}")
+                            # REMOVIDO: Opção pelo Simples / Opção pelo MEI (agora unificado no topo)
 
                         # ======== 3) ENDEREÇO ========
                         st.markdown("---")

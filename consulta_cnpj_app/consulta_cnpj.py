@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS do primeiro app
+# CSS (igual ao primeiro app)
 # =========================
 st.markdown("""
 <style>
@@ -42,7 +42,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================
-# Caminho de imagens (igual ao primeiro)
+# Caminho de imagens (mesmo padrão)
 # =========================
 IMAGE_DIR = Path(__file__).resolve().parent.parent / "images"
 
@@ -81,7 +81,7 @@ def consulta_brasilapi_cnpj(cnpj_limpo: str):
 def consulta_ie_open_cnpja(cnpj_limpo: str, max_retries: int = 2):
     """
     Busca SOMENTE as inscrições estaduais no open.cnpja.
-    Retorna lista de dicts padronizada ou [] se não houver.
+    Retorna lista de dicts padronizada, [] se não houver, ou None em falha.
     """
     url = f"{URL_OPEN_CNPJA}{cnpj_limpo}"
     attempt = 0
@@ -101,14 +101,12 @@ def consulta_ie_open_cnpja(cnpj_limpo: str, max_retries: int = 2):
                 })
             return ies
         elif resp.status_code == 429 and attempt < max_retries:
-            # rate limit básico
             time.sleep(2 * (attempt + 1))
             attempt += 1
             continue
         elif resp.status_code == 404:
-            return []  # sem registros/empresa não encontrada
+            return []
         else:
-            # Em qualquer outro erro, não trava a app — retorna None para sinalizar falha
             return None
 
 # =========================
@@ -138,14 +136,26 @@ if st.button("Consultar CNPJ"):
                 try:
                     dados_cnpj = consulta_brasilapi_cnpj(cnpj_limpo)
 
-                    # Checagem de payload inesperado
                     if not isinstance(dados_cnpj, dict) or "cnpj" not in dados_cnpj:
                         st.error("CNPJ não encontrado ou resposta inesperada da BrasilAPI.")
                     else:
                         st.success(f"Dados encontrados para o CNPJ: {format_cnpj_mask(dados_cnpj.get('cnpj','N/A'))}")
                         st.image(str(IMAGE_DIR / "logo_resultado.png"), width=100)
 
-                        # ======== Bloco principal (BrasilAPI) ========
+                        # ======== 1) REGIME TRIBUTÁRIO (no topo) ========
+                        st.markdown("---")
+                        st.markdown("## Regime Tributário (Histórico)")
+                        if dados_cnpj.get('regime_tributario'):
+                            for i, regime in enumerate(dados_cnpj['regime_tributario']):
+                                st.write(f"**Ano:** {regime.get('ano', 'N/A')}")
+                                st.write(f"**Forma de Tributação:** {regime.get('forma_de_tributacao', 'N/A')}")
+                                st.write(f"**Qtd. Escriturações:** {regime.get('quantidade_de_escrituracoes', 'N/A')}")
+                                if i < len(dados_cnpj['regime_tributario']) - 1:
+                                    st.markdown("---")
+                        else:
+                            st.info("Não há informações de Regime Tributário disponíveis para este CNPJ.")
+
+                        # ======== 2) DADOS DA EMPRESA ========
                         st.markdown("---")
                         st.markdown("## Dados da Empresa")
                         col1, col2 = st.columns(2)
@@ -168,6 +178,7 @@ if st.button("Consultar CNPJ"):
                             st.write(f"**Opção pelo Simples:** {'Sim' if dados_cnpj.get('opcao_pelo_simples') else ('Não' if dados_cnpj.get('opcao_pelo_simples') is False else 'N/A')}")
                             st.write(f"**Opção pelo MEI:** {'Sim' if dados_cnpj.get('opcao_pelo_mei') else ('Não' if dados_cnpj.get('opcao_pelo_mei') is False else 'N/A')}")
 
+                        # ======== 3) ENDEREÇO ========
                         st.markdown("---")
                         st.markdown("## Endereço")
                         st.write(f"**Logradouro:** {dados_cnpj.get('descricao_tipo_de_logradouro', '')} {dados_cnpj.get('logradouro', 'N/A')}, {dados_cnpj.get('numero', 'N/A')}")
@@ -178,6 +189,7 @@ if st.button("Consultar CNPJ"):
                         st.write(f"**UF:** {dados_cnpj.get('uf', 'N/A')}")
                         st.write(f"**CEP:** {dados_cnpj.get('cep', 'N/A')}")
 
+                        # ======== 4) QSA ========
                         if dados_cnpj.get('qsa'):
                             st.markdown("---")
                             st.markdown("## Quadro de Sócios e Administradores (QSA)")
@@ -194,6 +206,7 @@ if st.button("Consultar CNPJ"):
                         else:
                             st.info("Não há informações de QSA disponíveis.")
 
+                        # ======== 5) CNAEs Secundários ========
                         if dados_cnpj.get('cnaes_secundarios'):
                             st.markdown("---")
                             st.markdown("## CNAEs Secundários")
@@ -202,24 +215,12 @@ if st.button("Consultar CNPJ"):
                         else:
                             st.info("Não há CNAEs secundários informados.")
 
-                        if dados_cnpj.get('regime_tributario'):
-                            st.markdown("---")
-                            st.markdown("## Regime Tributário (Histórico)")
-                            for i, regime in enumerate(dados_cnpj['regime_tributario']):
-                                st.write(f"**Ano:** {regime.get('ano', 'N/A')}")
-                                st.write(f"**Forma de Tributação:** {regime.get('forma_de_tributacao', 'N/A')}")
-                                st.write(f"**Qtd. Escriturações:** {regime.get('quantidade_de_escrituracoes', 'N/A')}")
-                                if i < len(dados_cnpj['regime_tributario']) - 1:
-                                    st.markdown("---")
-                        else:
-                            st.info("Não há informações de Regime Tributário disponíveis.")
-
-                        # ======== SOMENTE IE via open.cnpja ========
+                        # ======== 6) Inscrições Estaduais (apenas título sem fonte) ========
                         st.markdown("---")
-                        st.markdown("## Inscrições Estaduais (fonte: open.cnpja)")
+                        st.markdown("## Inscrições Estaduais")
                         ies = consulta_ie_open_cnpja(cnpj_limpo)
                         if ies is None:
-                            st.warning("Não foi possível consultar as IEs no momento (open.cnpja).")
+                            st.warning("Não foi possível consultar as IEs no momento.")
                         elif len(ies) == 0:
                             st.info("Nenhuma Inscrição Estadual encontrada para este CNPJ.")
                         else:

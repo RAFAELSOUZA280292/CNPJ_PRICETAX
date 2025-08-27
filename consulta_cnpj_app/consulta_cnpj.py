@@ -3,7 +3,7 @@ import requests
 import re
 from pathlib import Path
 import time
-import datetime  # necessário para ano atual
+import datetime
 
 # =========================
 # Config da página / tema
@@ -111,6 +111,75 @@ def consulta_ie_open_cnpja(cnpj_limpo: str, max_retries: int = 2):
             return None
 
 # =========================
+# Regime Tributário unificado + badge
+# =========================
+def determinar_regime_unificado(dados_cnpj: dict) -> str:
+    """
+    Prioridade: MEI > SIMPLES NACIONAL > último regime do histórico (Lucro Real/Presumido).
+    Retorna string em maiúsculas. Não inclui 'BASEADO EM ...'.
+    """
+    is_mei = dados_cnpj.get("opcao_pelo_mei")
+    if is_mei:
+        return "MEI"
+
+    is_simples = dados_cnpj.get("opcao_pelo_simples")
+    if is_simples:
+        return "SIMPLES NACIONAL"
+
+    regimes = dados_cnpj.get("regime_tributario") or []
+    if regimes:
+        # pegar o ano mais recente disponível (preferindo <= ano atual), mas sem exibir o ano
+        current_year = datetime.date.today().year
+        anos = [r.get("ano") for r in regimes if isinstance(r.get("ano"), int)]
+        if anos:
+            candidatos = [a for a in anos if a <= current_year]
+            alvo = max(candidatos) if candidatos else max(anos)
+            regime_alvo = next((r for r in reversed(regimes) if r.get("ano") == alvo), regimes[-1])
+            forma = (regime_alvo or {}).get("forma_de_tributacao", "N/A")
+            return str(forma).upper()
+        else:
+            forma = (regimes[-1] or {}).get("forma_de_tributacao", "N/A")
+            return str(forma).upper()
+
+    return "N/A"
+
+def badge_cor(regime: str):
+    """
+    Retorna (bg, fg) de acordo com o regime.
+    Azul (Lucro Real), Verde (Lucro Presumido), Amarelo (Simples),
+    Laranja (MEI), Vermelho (N/A / não encontrado).
+    """
+    r = (regime or "").upper()
+    if "MEI" in r:
+        return "#FB923C", "#111111"   # laranja, texto escuro
+    if "SIMPLES" in r:
+        return "#FACC15", "#111111"   # amarelo, texto escuro
+    if "LUCRO REAL" in r:
+        return "#3B82F6", "#FFFFFF"   # azul, texto claro
+    if "LUCRO PRESUMIDO" in r:
+        return "#22C55E", "#111111"   # verde, texto escuro
+    return "#EF4444", "#FFFFFF"       # vermelho, texto claro (N/A ou outro)
+
+def render_regime_badge(regime: str):
+    bg, fg = badge_cor(regime)
+    st.markdown(
+        f"""
+        <div style="
+            display:inline-block;
+            padding:8px 12px;
+            border-radius:999px;
+            font-weight:800;
+            letter-spacing:.3px;
+            background:{bg};
+            color:{fg};
+            ">
+            {regime}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+# =========================
 # Cabeçalho
 # =========================
 st.image(str(IMAGE_DIR / "logo_main.png"), width=150)
@@ -140,42 +209,15 @@ if st.button("Consultar CNPJ"):
                     if not isinstance(dados_cnpj, dict) or "cnpj" not in dados_cnpj:
                         st.error("CNPJ não encontrado ou resposta inesperada da BrasilAPI.")
                     else:
+                        # Alerta de sucesso (Streamlit padrão verdinho)
                         st.success(f"Dados encontrados para o CNPJ: {format_cnpj_mask(dados_cnpj.get('cnpj','N/A'))}")
                         st.image(str(IMAGE_DIR / "logo_resultado.png"), width=100)
 
-                        # ======== 1) REGIME TRIBUTÁRIO (UNIFICADO) ========
+                        # ======== 1) REGIME TRIBUTÁRIO (badge colorido) ========
                         st.markdown("---")
                         st.markdown("## Regime Tributário")
-
-                        # flags Simples/MEI
-                        is_mei = dados_cnpj.get("opcao_pelo_mei")
-                        is_simples = dados_cnpj.get("opcao_pelo_simples")
-
-                        regimes = dados_cnpj.get("regime_tributario") or []
-                        current_year = datetime.date.today().year
-
-                        if is_mei:
-                            regime_final = "MEI"
-                            ano_base = current_year
-                        elif is_simples:
-                            regime_final = "SIMPLES NACIONAL"
-                            ano_base = current_year
-                        elif regimes:
-                            anos = [r.get("ano") for r in regimes if isinstance(r.get("ano"), int)]
-                            if anos:
-                                candidatos = [a for a in anos if a <= current_year]
-                                alvo = max(candidatos) if candidatos else max(anos)
-                                regime_alvo = next((r for r in reversed(regimes) if r.get("ano") == alvo), regimes[-1])
-                                regime_final = (regime_alvo or {}).get("forma_de_tributacao", "N/A")
-                                ano_base = alvo
-                            else:
-                                regime_final = (regimes[-1] or {}).get("forma_de_tributacao", "N/A")
-                                ano_base = "N/A"
-                        else:
-                            regime_final = "N/A"
-                            ano_base = "N/A"
-
-                        st.write(f"**Forma de Tributação:** {str(regime_final).upper()} (BASEADO EM {ano_base})")
+                        regime_final = determinar_regime_unificado(dados_cnpj)
+                        render_regime_badge(regime_final)
 
                         # ======== 2) DADOS DA EMPRESA ========
                         st.markdown("---")
@@ -197,7 +239,7 @@ if st.button("Consultar CNPJ"):
                             if tel2 != "N/A":
                                 st.write(f"**Telefone 2:** {tel2}")
                             st.write(f"**Email:** {dados_cnpj.get('email', 'N/A')}")
-                            # REMOVIDO: Opção pelo Simples / Opção pelo MEI (agora unificado no topo)
+                            # (Removidos campos "Opção pelo Simples/MEI" — regime agora é unificado no topo)
 
                         # ======== 3) ENDEREÇO ========
                         st.markdown("---")

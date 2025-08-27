@@ -215,10 +215,19 @@ if st.button("Consultar CNPJ"):
                 st.success(f"Dados encontrados para o CNPJ: {format_cnpj_mask(dados_cnpj.get('cnpj','N/A'))}")
                 st.image(str(IMAGE_DIR / "logo_resultado.png"), width=100)
 
-                # ======== RAZÃO SOCIAL – destaque acima do regime ========
+                # ======== Situação Cadastral (normaliza já aqui p/ uso no título) ========
+                sit_raw = dados_cnpj.get('descricao_situacao_cadastral', 'N/A')
+                sit_norm = normalizar_situacao_cadastral(sit_raw)
+
+                # ======== RAZÃO SOCIAL – destaque acima do regime (com BAIXADO no título) ========
                 razao = dados_cnpj.get('razao_social', 'N/A')
+                if sit_norm == "BAIXADO":
+                    razao_exibida = f"{razao} - (BAIXADO)"
+                else:
+                    razao_exibida = razao
+
                 st.markdown(
-                    f"<div style='text-align:center; font-size: 1.6rem; font-weight: 800; color: #FFC300; margin: 6px 0 2px 0;'>{razao}</div>",
+                    f"<div style='text-align:center; font-size: 1.6rem; font-weight: 800; color: #FFC300; margin: 6px 0 2px 0;'>{razao_exibida}</div>",
                     unsafe_allow_html=True
                 )
 
@@ -253,8 +262,6 @@ if st.button("Consultar CNPJ"):
                     st.write(f"**CNPJ:** {format_cnpj_mask(dados_cnpj.get('cnpj', 'N/A'))}")
 
                     # Situação Cadastral (bolinhas)
-                    sit_raw = dados_cnpj.get('descricao_situacao_cadastral', 'N/A')
-                    sit_norm = normalizar_situacao_cadastral(sit_raw)
                     render_situacao_badge("Situação Cadastral", sit_norm)
 
                     st.write(f"**Data Início Atividade:** {dados_cnpj.get('data_inicio_atividade', 'N/A')}")

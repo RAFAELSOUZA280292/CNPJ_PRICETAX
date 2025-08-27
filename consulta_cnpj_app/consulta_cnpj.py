@@ -66,6 +66,30 @@ def format_cnpj_mask(cnpj: str) -> str:
     c = only_digits(cnpj)
     return f"{c[0:2]}.{c[2:5]}.{c[5:8]}/{c[8:12]}-{c[12:14]}" if len(c) == 14 else cnpj
 
+# ---------- NOVO: calcular matriz a partir da filial ----------
+def calcular_digitos_verificadores_cnpj(cnpj_base_12_digitos: str) -> str:
+    pesos_12 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    pesos_13 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    def dv(base, pesos):
+        s = sum(int(base[i]) * pesos[i] for i in range(len(base)))
+        r = s % 11
+        return '0' if r < 2 else str(11 - r)
+    d13 = dv(cnpj_base_12_digitos[:12], pesos_12)
+    d14 = dv(cnpj_base_12_digitos[:12] + d13, pesos_13)
+    return d13 + d14
+
+def to_matriz_if_filial(cnpj_clean: str) -> str:
+    """Se for filial (xxxx/0002-.. ou maior), troca o sufixo para 0001 e recalcula DVs."""
+    if len(cnpj_clean) != 14:
+        return cnpj_clean
+    if cnpj_clean[8:12] != "0001":
+        raiz = cnpj_clean[:8]
+        base12 = raiz + "0001"
+        dvs = calcular_digitos_verificadores_cnpj(base12)
+        return base12 + dvs
+    return cnpj_clean
+# ---------------------------------------------------------------
+
 # =========================
 # BrasilAPI (dados principais)
 # =========================
@@ -80,10 +104,6 @@ def consulta_brasilapi_cnpj(cnpj_limpo: str):
 # =========================
 @st.cache_data(ttl=3600, show_spinner=False)
 def consulta_ie_open_cnpja(cnpj_limpo: str, max_retries: int = 2):
-    """
-    Busca SOMENTE as inscrições estaduais no open.cnpja.
-    Retorna lista de dicts padronizada, [] se não houver, ou None em falha.
-    """
     url = f"{URL_OPEN_CNPJA}{cnpj_limpo}"
     attempt = 0
     while True:
@@ -116,7 +136,7 @@ def consulta_ie_open_cnpja(cnpj_limpo: str, max_retries: int = 2):
 def determinar_regime_unificado(dados_cnpj: dict) -> str:
     """
     Prioridade: MEI > SIMPLES NACIONAL > último regime do histórico (Lucro Real/Presumido).
-    Retorna string em maiúsculas. Não inclui 'BASEADO EM ...'.
+    Retorna string em maiúsculas, sem ano.
     """
     is_mei = dados_cnpj.get("opcao_pelo_mei")
     if is_mei:
@@ -128,7 +148,6 @@ def determinar_regime_unificado(dados_cnpj: dict) -> str:
 
     regimes = dados_cnpj.get("regime_tributario") or []
     if regimes:
-        # pegar o ano mais recente disponível (preferindo <= ano atual), mas sem exibir o ano
         current_year = datetime.date.today().year
         anos = [r.get("ano") for r in regimes if isinstance(r.get("ano"), int)]
         if anos:
@@ -140,25 +159,19 @@ def determinar_regime_unificado(dados_cnpj: dict) -> str:
         else:
             forma = (regimes[-1] or {}).get("forma_de_tributacao", "N/A")
             return str(forma).upper()
-
     return "N/A"
 
 def badge_cor(regime: str):
-    """
-    Retorna (bg, fg) de acordo com o regime.
-    Azul (Lucro Real), Verde (Lucro Presumido), Amarelo (Simples),
-    Laranja (MEI), Vermelho (N/A / não encontrado).
-    """
     r = (regime or "").upper()
     if "MEI" in r:
-        return "#FB923C", "#111111"   # laranja, texto escuro
+        return "#FB923C", "#111111"   # laranja
     if "SIMPLES" in r:
-        return "#FACC15", "#111111"   # amarelo, texto escuro
+        return "#FACC15", "#111111"   # amarelo
     if "LUCRO REAL" in r:
-        return "#3B82F6", "#FFFFFF"   # azul, texto claro
+        return "#3B82F6", "#FFFFFF"   # azul
     if "LUCRO PRESUMIDO" in r:
-        return "#22C55E", "#111111"   # verde, texto escuro
-    return "#EF4444", "#FFFFFF"       # vermelho, texto claro (N/A ou outro)
+        return "#22C55E", "#111111"   # verde
+    return "#EF4444", "#FFFFFF"       # vermelho (N/A)
 
 def render_regime_badge(regime: str):
     bg, fg = badge_cor(regime)
@@ -204,22 +217,37 @@ if st.button("Consultar CNPJ"):
         else:
             with st.spinner(f"Consultando CNPJ {format_cnpj_mask(cnpj_limpo)}..."):
                 try:
+                    # Consulta principal (sempre no CNPJ digitado – pode ser filial)
                     dados_cnpj = consulta_brasilapi_cnpj(cnpj_limpo)
 
                     if not isinstance(dados_cnpj, dict) or "cnpj" not in dados_cnpj:
                         st.error("CNPJ não encontrado ou resposta inesperada da BrasilAPI.")
                     else:
-                        # Alerta de sucesso (Streamlit padrão verdinho)
                         st.success(f"Dados encontrados para o CNPJ: {format_cnpj_mask(dados_cnpj.get('cnpj','N/A'))}")
                         st.image(str(IMAGE_DIR / "logo_resultado.png"), width=100)
 
-                        # ======== 1) REGIME TRIBUTÁRIO (badge colorido) ========
+                        # ======== 1) REGIME TRIBUTÁRIO via MATRIZ ========
                         st.markdown("---")
                         st.markdown("## Regime Tributário")
-                        regime_final = determinar_regime_unificado(dados_cnpj)
+
+                        # Calcula CNPJ da Matriz quando a consulta for filial
+                        cnpj_matriz = to_matriz_if_filial(cnpj_limpo)
+
+                        # Por padrão, usa os dados do próprio CNPJ; se for filial, tenta buscar a Matriz
+                        regime_source = dados_cnpj
+                        if cnpj_matriz != cnpj_limpo:
+                            try:
+                                dados_matriz = consulta_brasilapi_cnpj(cnpj_matriz)
+                                if isinstance(dados_matriz, dict) and "cnpj" in dados_matriz:
+                                    regime_source = dados_matriz
+                            except Exception:
+                                # se a consulta da matriz falhar, mantém o regime a partir do próprio CNPJ (fallback)
+                                pass
+
+                        regime_final = determinar_regime_unificado(regime_source)
                         render_regime_badge(regime_final)
 
-                        # ======== 2) DADOS DA EMPRESA ========
+                        # ======== 2) DADOS DA EMPRESA (da filial ou do que foi consultado) ========
                         st.markdown("---")
                         st.markdown("## Dados da Empresa")
                         col1, col2 = st.columns(2)
@@ -239,7 +267,6 @@ if st.button("Consultar CNPJ"):
                             if tel2 != "N/A":
                                 st.write(f"**Telefone 2:** {tel2}")
                             st.write(f"**Email:** {dados_cnpj.get('email', 'N/A')}")
-                            # (Removidos campos "Opção pelo Simples/MEI" — regime agora é unificado no topo)
 
                         # ======== 3) ENDEREÇO ========
                         st.markdown("---")

@@ -64,7 +64,7 @@ def to_matriz_if_filial(cnpj_clean: str) -> str:
         return base12 + dvs
     return cnpj_clean
 
-# ---------- consultas com mensagens limpas ----------
+# ---------- consultas (white-label) ----------
 @st.cache_data(ttl=3600, show_spinner=False)
 def consulta_brasilapi_cnpj(cnpj_limpo: str):
     try:
@@ -152,7 +152,7 @@ def render_regime_badge(regime: str):
     bg, fg = badge_cor_regime(regime)
     render_badge(regime, bg, fg)
 
-# ---------- Situação Cadastral (badge colorido) ----------
+# ---------- Situação Cadastral (normalizada + bolinhas) ----------
 def normalizar_situacao_cadastral(txt: str) -> str:
     """
     Normaliza para: ATIVO / INAPTO / SUSPENSO / BAIXADO / N/A
@@ -165,20 +165,21 @@ def normalizar_situacao_cadastral(txt: str) -> str:
     if "INAPT" in s:      return "INAPTO"
     if "SUSP" in s:       return "SUSPENSO"
     if "BAIX" in s:       return "BAIXADO"
-    return s  # mantém qualquer outro valor sem quebrar
-
-def badge_cor_situacao(status_norm: str):
-    s = (status_norm or "").upper()
-    if s == "ATIVO":     return "#22C55E", "#111111"  # verde
-    if s == "INAPTO":    return "#FACC15", "#111111"  # amarelo
-    if s == "SUSPENSO":  return "#FB923C", "#111111"  # laranja
-    if s == "BAIXADO":   return "#EF4444", "#FFFFFF"  # vermelho
-    # default neutro
-    return "#6B7280", "#FFFFFF"                      # cinza
+    return s
 
 def render_situacao_badge(label: str, valor: str):
-    bg, fg = badge_cor_situacao(valor)
-    render_badge(f"{label}: {valor.title()}", bg, fg)
+    s = (valor or "N/A").upper()
+    if s == "ATIVO":
+        icon, txt = "🟢", "Ativo"
+    elif s == "INAPTO":
+        icon, txt = "🟡", "Inapto"
+    elif s == "SUSPENSO":
+        icon, txt = "🟠", "Suspenso"
+    elif s == "BAIXADO":
+        icon, txt = "🔴", "Baixado"
+    else:
+        icon, txt = "⚪", (valor.title() if valor else "N/A")
+    st.write(f"**{label}:** {icon} {txt}")
 
 # ---------- UI ----------
 st.image(str(IMAGE_DIR / "logo_main.png"), width=150)
@@ -214,7 +215,7 @@ if st.button("Consultar CNPJ"):
                 st.success(f"Dados encontrados para o CNPJ: {format_cnpj_mask(dados_cnpj.get('cnpj','N/A'))}")
                 st.image(str(IMAGE_DIR / "logo_resultado.png"), width=100)
 
-                # ======== (NOVO) RAZÃO SOCIAL – destaque acima do regime ========
+                # ======== RAZÃO SOCIAL – destaque acima do regime ========
                 razao = dados_cnpj.get('razao_social', 'N/A')
                 st.markdown(
                     f"<div style='text-align:center; font-size: 1.6rem; font-weight: 800; color: #FFC300; margin: 6px 0 2px 0;'>{razao}</div>",
@@ -251,7 +252,7 @@ if st.button("Consultar CNPJ"):
                     st.write(f"**Nome Fantasia:** {dados_cnpj.get('nome_fantasia', 'N/A')}")
                     st.write(f"**CNPJ:** {format_cnpj_mask(dados_cnpj.get('cnpj', 'N/A'))}")
 
-                    # (NOVO) Situação Cadastral com badge colorido
+                    # Situação Cadastral (bolinhas)
                     sit_raw = dados_cnpj.get('descricao_situacao_cadastral', 'N/A')
                     sit_norm = normalizar_situacao_cadastral(sit_raw)
                     render_situacao_badge("Situação Cadastral", sit_norm)
@@ -303,7 +304,6 @@ if st.button("Consultar CNPJ"):
                     for cnae in dados_cnpj['cnaes_secundarios']:
                         st.markdown(f"- **{cnae.get('codigo', 'N/A')}**: {cnae.get('descricao', 'N/A')}")
                 else:
-                    # (NOVO) Texto amigável quando não houver CNAEs secundários
                     st.info("Nenhum CNAE secundário encontrado para este CNPJ.")
 
                 # ======== 6) Inscrições Estaduais (open.cnpja) ========

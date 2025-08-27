@@ -3,6 +3,7 @@ import requests
 import re
 from pathlib import Path
 import time
+import datetime  # <— novo
 
 # =========================
 # Config da página / tema
@@ -142,18 +143,27 @@ if st.button("Consultar CNPJ"):
                         st.success(f"Dados encontrados para o CNPJ: {format_cnpj_mask(dados_cnpj.get('cnpj','N/A'))}")
                         st.image(str(IMAGE_DIR / "logo_resultado.png"), width=100)
 
-                        # ======== 1) REGIME TRIBUTÁRIO (no topo) ========
+                        # ======== 1) REGIME TRIBUTÁRIO (no topo, só o ano mais recente) ========
                         st.markdown("---")
-                        st.markdown("## Regime Tributário (Histórico)")
-                        if dados_cnpj.get('regime_tributario'):
-                            for i, regime in enumerate(dados_cnpj['regime_tributario']):
-                                st.write(f"**Ano:** {regime.get('ano', 'N/A')}")
-                                st.write(f"**Forma de Tributação:** {regime.get('forma_de_tributacao', 'N/A')}")
-                                st.write(f"**Qtd. Escriturações:** {regime.get('quantidade_de_escrituracoes', 'N/A')}")
-                                if i < len(dados_cnpj['regime_tributario']) - 1:
-                                    st.markdown("---")
-                        else:
+                        st.markdown("## Regime Tributário")
+                        regimes = dados_cnpj.get('regime_tributario') or []
+                        if not regimes:
                             st.info("Não há informações de Regime Tributário disponíveis para este CNPJ.")
+                        else:
+                            # pega o ano mais recente disponível (de preferência <= ano atual)
+                            current_year = datetime.date.today().year
+                            anos = [r.get("ano") for r in regimes if isinstance(r.get("ano"), int)]
+                            if not anos:
+                                # fallback: mostra a primeira forma se não tiver ano válido
+                                forma = (regimes[-1] or {}).get("forma_de_tributacao", "N/A")
+                                st.write(f"**Forma de Tributação:** {str(forma).upper()} (BASEADO EM N/A)")
+                            else:
+                                candidatos = [a for a in anos if a <= current_year]
+                                alvo = max(candidatos) if candidatos else max(anos)
+                                # pega o último regime que tenha esse ano
+                                regime_alvo = next((r for r in reversed(regimes) if r.get("ano") == alvo), regimes[-1])
+                                forma = (regime_alvo or {}).get("forma_de_tributacao", "N/A")
+                                st.write(f"**Forma de Tributação:** {str(forma).upper()} (BASEADO EM {alvo})")
 
                         # ======== 2) DADOS DA EMPRESA ========
                         st.markdown("---")
@@ -215,7 +225,7 @@ if st.button("Consultar CNPJ"):
                         else:
                             st.info("Não há CNAEs secundários informados.")
 
-                        # ======== 6) Inscrições Estaduais (apenas título sem fonte) ========
+                        # ======== 6) Inscrições Estaduais ========
                         st.markdown("---")
                         st.markdown("## Inscrições Estaduais")
                         ies = consulta_ie_open_cnpja(cnpj_limpo)

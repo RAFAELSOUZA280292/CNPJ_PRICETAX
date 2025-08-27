@@ -1,109 +1,125 @@
 import streamlit as st
 import requests
 import re
-from pathlib import Path # Importar pathlib
+from pathlib import Path
+import time
 
-# --- Configuração da Aplicação ---
+# =========================
+# Config da página / tema
+# =========================
 URL_BRASILAPI_CNPJ = "https://brasilapi.com.br/api/cnpj/v1/"
+URL_OPEN_CNPJA = "https://open.cnpja.com/office/"
 
-# --- Configuração da Página e Estilo (Cores Personalizadas) ---
 st.set_page_config(
     page_title="Consulta CNPJ - Adapta",
-    layout="centered", # Centraliza o conteúdo para melhor visualização
-    initial_sidebar_state="collapsed" # Não exibe a sidebar inicialmente
+    layout="centered",
+    initial_sidebar_state="collapsed"
 )
 
-# Injeção de CSS personalizado para as cores: Amarelo Riqueza, Cinza e Preto
-st.markdown(f"""
+# =========================
+# CSS do primeiro app
+# =========================
+st.markdown("""
 <style>
-    /* Cor de Fundo Principal da Aplicação - Muito Escuro / Quase Preto */
-    .stApp {{
-        background-color: #1A1A1A; /* Quase preto */
-        color: #EEEEEE; /* Cinza claro para o texto principal */
-    }}
-
-    /* Títulos (h1 a h6) */
-    h1, h2, h3, h4, h5, h6 {{
-        color: #FFC300; /* Amarelo Riqueza */
-    }}
-
-    /* Estilo dos Labels e Inputs de Texto */
-    .stTextInput label {{
-        color: #FFC300; /* Amarelo Riqueza para os labels */
-    }}
-    .stTextInput div[data-baseweb="input"] > div {{
-        background-color: #333333; /* Cinza escuro para o fundo do input */
-        color: #EEEEEE; /* Cinza claro para o texto digitado */
-        border: 1px solid #FFC300; /* Borda Amarelo Riqueza */
-    }}
-    /* Estilo do input quando focado */
-    .stTextInput div[data-baseweb="input"] > div:focus-within {{
-        border-color: #FFD700; /* Amarelo ligeiramente mais claro no foco */
-        box-shadow: 0 0 0 0.1rem rgba(255, 195, 0, 0.25); /* Sombra sutil */
-    }}
-
-    /* Estilo dos Botões */
-    .stButton > button {{
-        background-color: #FFC300; /* Amarelo Riqueza */
-        color: #1A1A1A; /* Texto escuro no botão amarelo */
-        border: none;
-        padding: 10px 20px;
-        border-radius: 5px;
-        font-weight: bold;
-        transition: background-color 0.3s ease; /* Transição suave no hover */
-    }}
-    /* Estilo do botão ao passar o mouse */
-    .stButton > button:hover {{
-        background-color: #FFD700; /* Amarelo ligeiramente mais claro no hover */
-        color: #000000; /* Preto total no texto para contraste */
-    }}
-
-    /* Estilo dos Expanders (usado para QSA, por exemplo) */
-    .stExpander {{
-        background-color: #333333; /* Cinza escuro para o fundo do expander */
-        border: 1px solid #FFC300; /* Borda Amarelo Riqueza */
-        border-radius: 5px;
-        padding: 10px;
-        margin-bottom: 10px;
-    }}
-    .stExpander > div > div > div > p {{
-        color: #EEEEEE; /* Cinza claro para o título do expander */
-    }}
-
-    /* Estilo para st.info, st.warning, st.error */
-    .stAlert {{
-        background-color: #333333; /* Cinza escuro para o fundo dos alertas */
-        color: #EEEEEE; /* Cinza claro para o texto */
-        border-left: 5px solid #FFC300; /* Borda esquerda Amarelo Riqueza */
-        border-radius: 5px;
-    }}
-    .stAlert > div > div > div > div > span {{
-        color: #EEEEEE !important; /* Garante que o texto dentro do alerta seja claro */
-    }}
-    .stAlert > div > div > div > div > svg {{
-        color: #FFC300 !important; /* Garante que o ícone do alerta seja amarelo */
-    }}
-
-    /* Linhas divisórias */
-    hr {{
-        border-top: 1px solid #444444; /* Cinza para divisórias */
-    }}
+    .stApp { background-color: #1A1A1A; color: #EEEEEE; }
+    h1, h2, h3, h4, h5, h6 { color: #FFC300; }
+    .stTextInput label { color: #FFC300; }
+    .stTextInput div[data-baseweb="input"] > div {
+        background-color: #333333; color: #EEEEEE; border: 1px solid #FFC300;
+    }
+    .stTextInput div[data-baseweb="input"] > div:focus-within {
+        border-color: #FFD700; box-shadow: 0 0 0 0.1rem rgba(255, 195, 0, 0.25);
+    }
+    .stButton > button {
+        background-color: #FFC300; color: #1A1A1A; border: none; padding: 10px 20px;
+        border-radius: 5px; font-weight: bold; transition: background-color .3s ease;
+    }
+    .stButton > button:hover { background-color: #FFD700; color: #000000; }
+    .stExpander { background-color: #333333; border: 1px solid #FFC300; border-radius: 5px;
+        padding: 10px; margin-bottom: 10px; }
+    hr { border-top: 1px solid #444444; }
 </style>
-""", unsafe_allow_html=True) # Permite a interpretação do HTML/CSS
+""", unsafe_allow_html=True)
 
-# --- Lógica de Caminho para Imagens ---
-# __file__ é o caminho do script atual (e.g., /mount/src/cnpj_pricetax/consulta_cnpj_app/consulta_cnpj.py)
-# Path(__file__).resolve() garante o caminho completo e resolvido.
-# .parent pega o diretório pai (e.g., /mount/src/cnpj_pricetax/consulta_cnpj_app/)
-# .parent novamente sobe para o diretório raiz do repositório (e.g., /mount/src/cnpj_pricetax/)
-# / "images" anexa a pasta images (e.g., /mount/src/cnpj_pricetax/images/)
+# =========================
+# Caminho de imagens (igual ao primeiro)
+# =========================
 IMAGE_DIR = Path(__file__).resolve().parent.parent / "images"
 
-# --- Aplicação Principal (Sem Autenticação) ---
-# IMAGEM NA PÁGINA DE CONSULTA (Topo)
-st.image(str(IMAGE_DIR / "logo_main.png"), width=150) # Ajuste a largura conforme necessário
+# =========================
+# Utilidades
+# =========================
+def only_digits(s: str) -> str:
+    return re.sub(r'[^0-9]', '', s or "")
+
+def format_currency_brl(v):
+    try:
+        return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return "N/A"
+
+def format_phone(ddd, num):
+    return f"({ddd}) {num}" if ddd and num else "N/A"
+
+def format_cnpj_mask(cnpj: str) -> str:
+    c = only_digits(cnpj)
+    return f"{c[0:2]}.{c[2:5]}.{c[5:8]}/{c[8:12]}-{c[12:14]}" if len(c) == 14 else cnpj
+
+# =========================
+# BrasilAPI (dados principais)
+# =========================
+@st.cache_data(ttl=3600, show_spinner=False)
+def consulta_brasilapi_cnpj(cnpj_limpo: str):
+    r = requests.get(f"{URL_BRASILAPI_CNPJ}{cnpj_limpo}", timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+# =========================
+# open.cnpja (SOMENTE IE)
+# =========================
+@st.cache_data(ttl=3600, show_spinner=False)
+def consulta_ie_open_cnpja(cnpj_limpo: str, max_retries: int = 2):
+    """
+    Busca SOMENTE as inscrições estaduais no open.cnpja.
+    Retorna lista de dicts padronizada ou [] se não houver.
+    """
+    url = f"{URL_OPEN_CNPJA}{cnpj_limpo}"
+    attempt = 0
+    while True:
+        resp = requests.get(url, timeout=15)
+        if resp.status_code == 200:
+            data = resp.json()
+            regs = data.get("registrations", []) if isinstance(data, dict) else []
+            ies = []
+            for reg in regs:
+                ies.append({
+                    "uf": (reg or {}).get("state"),
+                    "numero": (reg or {}).get("number"),
+                    "habilitada": (reg or {}).get("enabled"),
+                    "status_texto": ((reg or {}).get("status") or {}).get("text"),
+                    "tipo_texto": ((reg or {}).get("type") or {}).get("text"),
+                })
+            return ies
+        elif resp.status_code == 429 and attempt < max_retries:
+            # rate limit básico
+            time.sleep(2 * (attempt + 1))
+            attempt += 1
+            continue
+        elif resp.status_code == 404:
+            return []  # sem registros/empresa não encontrada
+        else:
+            # Em qualquer outro erro, não trava a app — retorna None para sinalizar falha
+            return None
+
+# =========================
+# Cabeçalho
+# =========================
+st.image(str(IMAGE_DIR / "logo_main.png"), width=150)
 st.markdown("<h1 style='text-align: center;'>Consulta de CNPJ</h1>", unsafe_allow_html=True)
 
+# =========================
+# Entrada
+# =========================
 cnpj_input = st.text_input(
     "Digite o CNPJ (apenas números, ou com pontos, barras e traços):",
     placeholder="Ex: 00.000.000/0000-00 ou 00000000000000",
@@ -114,70 +130,41 @@ if st.button("Consultar CNPJ"):
     if not cnpj_input:
         st.warning("Por favor, digite um CNPJ para consultar.")
     else:
-        # Limpa o CNPJ: remove todos os caracteres não numéricos
-        cnpj_limpo = re.sub(r'[^0-9]', '', cnpj_input)
-
+        cnpj_limpo = only_digits(cnpj_input)
         if len(cnpj_limpo) != 14:
             st.error("CNPJ inválido. Um CNPJ deve conter exatamente 14 dígitos numéricos.")
         else:
-            with st.spinner(f"Consultando CNPJ {cnpj_limpo}..."):
+            with st.spinner(f"Consultando CNPJ {format_cnpj_mask(cnpj_limpo)}..."):
                 try:
-                    # Realiza a requisição à BrasilAPI
-                    response = requests.get(f"{URL_BRASILAPI_CNPJ}{cnpj_limpo}", timeout=15)
-                    response.raise_for_status() # Lança um HTTPError para respostas 4xx/5xx
-                    dados_cnpj = response.json()
+                    dados_cnpj = consulta_brasilapi_cnpj(cnpj_limpo)
 
-                    # Verifica se a API retornou um erro específico no JSON (ex: CNPJ não encontrado)
-                    if "message" in dados_cnpj and "erros" in dados_cnpj:
-                        st.error(f"Erro ao consultar CNPJ: {dados_cnpj['message']}")
-                        if 'erros' in dados_cnpj and isinstance(dados_cnpj['erros'], list):
-                            for erro_detalhe in dados_cnpj['erros']:
-                                st.error(f"- {erro_detalhe}")
-                        st.info("Verifique se o CNPJ digitado está correto.")
-                    elif "cnpj" not in dados_cnpj:
-                         st.error("CNPJ não encontrado ou houve um problema inesperado na resposta da API. Tente novamente mais tarde ou verifique o CNPJ.")
+                    # Checagem de payload inesperado
+                    if not isinstance(dados_cnpj, dict) or "cnpj" not in dados_cnpj:
+                        st.error("CNPJ não encontrado ou resposta inesperada da BrasilAPI.")
                     else:
-                        st.success(f"Dados encontrados para o CNPJ: {dados_cnpj.get('cnpj', 'N/A')}")
-                        # IMAGEM NA PÁGINA DE RESULTADO (Após o sucesso da consulta)
-                        st.image(str(IMAGE_DIR / "logo_resultado.png"), width=100) # Ajuste a largura conforme necessário
+                        st.success(f"Dados encontrados para o CNPJ: {format_cnpj_mask(dados_cnpj.get('cnpj','N/A'))}")
+                        st.image(str(IMAGE_DIR / "logo_resultado.png"), width=100)
 
+                        # ======== Bloco principal (BrasilAPI) ========
                         st.markdown("---")
                         st.markdown("## Dados da Empresa")
-
-                        # Organiza os dados em colunas para melhor visualização
                         col1, col2 = st.columns(2)
                         with col1:
                             st.write(f"**Razão Social:** {dados_cnpj.get('razao_social', 'N/A')}")
                             st.write(f"**Nome Fantasia:** {dados_cnpj.get('nome_fantasia', 'N/A')}")
-                            st.write(f"**CNPJ:** {dados_cnpj.get('cnpj', 'N/A')}")
+                            st.write(f"**CNPJ:** {format_cnpj_mask(dados_cnpj.get('cnpj', 'N/A'))}")
                             st.write(f"**Situação Cadastral:** {dados_cnpj.get('descricao_situacao_cadastral', 'N/A')}")
                             st.write(f"**Data Início Atividade:** {dados_cnpj.get('data_inicio_atividade', 'N/A')}")
                             st.write(f"**CNAE Fiscal:** {dados_cnpj.get('cnae_fiscal_descricao', 'N/A')} ({dados_cnpj.get('cnae_fiscal', 'N/A')})")
                             st.write(f"**Porte:** {dados_cnpj.get('porte', 'N/A')}")
                         with col2:
                             st.write(f"**Natureza Jurídica:** {dados_cnpj.get('natureza_juridica', 'N/A')}")
-                            # Formatação de moeda para o Capital Social (padrão brasileiro)
-                            capital_social = dados_cnpj.get('capital_social', 0)
-                            if isinstance(capital_social, (int, float)):
-                                st.write(f"**Capital Social:** R\$ {capital_social:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-                            else:
-                                st.write(f"**Capital Social:** N/A")
-
-                            # Exibe telefones, concatenando DDD e número
-                            telefone1_ddd = dados_cnpj.get('ddd_telefone_1')
-                            telefone1_num = dados_cnpj.get('telefone_1')
-                            if telefone1_ddd and telefone1_num:
-                                st.write(f"**Telefone:** ({telefone1_ddd}) {telefone1_num}")
-                            else:
-                                st.write(f"**Telefone:** N/A")
-
-                            telefone2_ddd = dados_cnpj.get('ddd_telefone_2')
-                            telefone2_num = dados_cnpj.get('telefone_2')
-                            if telefone2_ddd and telefone2_num:
-                                st.write(f"**Telefone 2:** ({telefone2_ddd}) {telefone2_num}")
-
+                            st.write(f"**Capital Social:** {format_currency_brl(dados_cnpj.get('capital_social', 0))}")
+                            st.write(f"**Telefone:** {format_phone(dados_cnpj.get('ddd_telefone_1'), dados_cnpj.get('telefone_1'))}")
+                            tel2 = format_phone(dados_cnpj.get('ddd_telefone_2'), dados_cnpj.get('telefone_2'))
+                            if tel2 != "N/A":
+                                st.write(f"**Telefone 2:** {tel2}")
                             st.write(f"**Email:** {dados_cnpj.get('email', 'N/A')}")
-                            # Trata os campos booleanos de Simples e MEI
                             st.write(f"**Opção pelo Simples:** {'Sim' if dados_cnpj.get('opcao_pelo_simples') else ('Não' if dados_cnpj.get('opcao_pelo_simples') is False else 'N/A')}")
                             st.write(f"**Opção pelo MEI:** {'Sim' if dados_cnpj.get('opcao_pelo_mei') else ('Não' if dados_cnpj.get('opcao_pelo_mei') is False else 'N/A')}")
 
@@ -191,53 +178,66 @@ if st.button("Consultar CNPJ"):
                         st.write(f"**UF:** {dados_cnpj.get('uf', 'N/A')}")
                         st.write(f"**CEP:** {dados_cnpj.get('cep', 'N/A')}")
 
-                        st.markdown("---")
                         if dados_cnpj.get('qsa'):
+                            st.markdown("---")
                             st.markdown("## Quadro de Sócios e Administradores (QSA)")
-                            # Utiliza st.expander para cada sócio, mantendo a organização
                             for i, socio in enumerate(dados_cnpj['qsa']):
-                                with st.expander(f"**Sócio/Administrador {i+1}:** {socio.get('nome_socio', 'N/A')}"):
+                                with st.expander(f"Sócio/Adm {i+1}: {socio.get('nome_socio', 'N/A')}"):
                                     st.write(f"**Nome:** {socio.get('nome_socio', 'N/A')}")
                                     st.write(f"**Qualificação:** {socio.get('qualificacao_socio', 'N/A')}")
                                     st.write(f"**Data de Entrada:** {socio.get('data_entrada_sociedade', 'N/A')}")
                                     st.write(f"**CNPJ/CPF do Sócio:** {socio.get('cnpj_cpf_do_socio', 'N/A')}")
                                     if socio.get('nome_representante_legal'):
-                                        st.write(f"**Nome do Representante Legal:** {socio.get('nome_representante_legal', 'N/A')}")
+                                        st.write(f"**Representante Legal:** {socio.get('nome_representante_legal', 'N/A')}")
                                         st.write(f"**CPF do Representante Legal:** {socio.get('cpf_representante_legal', 'N/A')}")
-                                        st.write(f"**Qualificação do Representante Legal:** {socio.get('qualificacao_representante_legal', 'N/A')}")
+                                        st.write(f"**Qualificação do Representante:** {socio.get('qualificacao_representante_legal', 'N/A')}")
                         else:
-                            st.info("Não há informações de Quadro de Sócios e Administradores (QSA) disponíveis para este CNPJ.")
+                            st.info("Não há informações de QSA disponíveis.")
 
-                        st.markdown("---")
                         if dados_cnpj.get('cnaes_secundarios'):
+                            st.markdown("---")
                             st.markdown("## CNAEs Secundários")
-                            cnaes_list_formatted = []
                             for cnae in dados_cnpj['cnaes_secundarios']:
-                                cnaes_list_formatted.append(f"- **{cnae.get('codigo', 'N/A')}**: {cnae.get('descricao', 'N/A')}")
-                            st.markdown("\n".join(cnaes_list_formatted)) # Exibe como lista Markdown
+                                st.markdown(f"- **{cnae.get('codigo', 'N/A')}**: {cnae.get('descricao', 'N/A')}")
                         else:
-                            st.info("Não há CNAEs secundários informados para este CNPJ.")
+                            st.info("Não há CNAEs secundários informados.")
 
-                        st.markdown("---") # Adiciona uma nova linha divisória
                         if dados_cnpj.get('regime_tributario'):
+                            st.markdown("---")
                             st.markdown("## Regime Tributário (Histórico)")
                             for i, regime in enumerate(dados_cnpj['regime_tributario']):
                                 st.write(f"**Ano:** {regime.get('ano', 'N/A')}")
                                 st.write(f"**Forma de Tributação:** {regime.get('forma_de_tributacao', 'N/A')}")
                                 st.write(f"**Qtd. Escriturações:** {regime.get('quantidade_de_escrituracoes', 'N/A')}")
-                                if i < len(dados_cnpj['regime_tributario']) - 1: # Adiciona uma linha entre os regimes
+                                if i < len(dados_cnpj['regime_tributario']) - 1:
                                     st.markdown("---")
                         else:
-                            st.info("Não há informações de Regime Tributário disponíveis para este CNPJ.")
+                            st.info("Não há informações de Regime Tributário disponíveis.")
 
+                        # ======== SOMENTE IE via open.cnpja ========
+                        st.markdown("---")
+                        st.markdown("## Inscrições Estaduais (fonte: open.cnpja)")
+                        ies = consulta_ie_open_cnpja(cnpj_limpo)
+                        if ies is None:
+                            st.warning("Não foi possível consultar as IEs no momento (open.cnpja).")
+                        elif len(ies) == 0:
+                            st.info("Nenhuma Inscrição Estadual encontrada para este CNPJ.")
+                        else:
+                            for idx, ie in enumerate(ies, start=1):
+                                titulo = f"IE {idx} - {ie.get('uf') or 'UF N/A'}"
+                                with st.expander(titulo):
+                                    st.write(f"**UF:** {ie.get('uf', 'N/A')}")
+                                    st.write(f"**Inscrição Estadual:** {ie.get('numero', 'N/A')}")
+                                    habilitada = ie.get('habilitada', False)
+                                    st.write(f"**Habilitada:** {'Sim' if habilitada else 'Não'}")
+                                    st.write(f"**Status:** {ie.get('status_texto', 'N/A')}")
+                                    st.write(f"**Tipo:** {ie.get('tipo_texto', 'N/A')}")
 
                 except requests.exceptions.Timeout:
-                    st.error("Tempo limite da requisição excedido. A API não respondeu a tempo. Tente novamente mais tarde.")
+                    st.error("Tempo limite da requisição excedido. Tente novamente mais tarde.")
                 except requests.exceptions.ConnectionError:
-                    st.error("Erro de conexão: Não foi possível acessar a API. Verifique sua conexão com a internet ou se a BrasilAPI está online.")
+                    st.error("Erro de conexão: verifique sua internet ou a disponibilidade das APIs.")
                 except requests.exceptions.HTTPError as e:
-                    st.error(f"Erro na requisição HTTP: {e}. Isso pode indicar um problema com o CNPJ ou com o servidor da API.")
-                except ValueError:
-                    st.error("Erro ao processar a resposta da API. O formato dos dados recebidos é inválido.")
+                    st.error(f"Erro HTTP: {e}.")
                 except Exception as e:
                     st.error(f"Ocorreu um erro inesperado: {e}")

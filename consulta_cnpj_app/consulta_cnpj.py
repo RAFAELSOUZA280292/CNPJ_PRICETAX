@@ -4,6 +4,8 @@ import re
 from pathlib import Path
 import time
 import datetime
+import io
+import csv
 
 URL_BRASILAPI_CNPJ = "https://brasilapi.com.br/api/cnpj/v1/"
 URL_OPEN_CNPJA = "https://open.cnpja.com/office/"
@@ -181,6 +183,35 @@ def render_situacao_badge(label: str, valor: str):
         icon, txt = "⚪", (valor.title() if valor else "N/A")
     st.write(f"**{label}:** {icon} {txt}")
 
+# ---------- Helpers CSV ----------
+def join_ies_for_csv(ies_list):
+    """
+    Concatena IEs em uma única string amigável para CSV.
+    Formato de cada bloco: "UF: XX | IE: 123 | Habilitada: Sim/Não | Status: ... | Tipo: ..."
+    Separador entre blocos: " || "
+    """
+    if not ies_list:
+        return ""
+    blocks = []
+    for ie in ies_list:
+        uf = ie.get("uf") or ""
+        numero = ie.get("numero") or ""
+        habil = "Sim" if ie.get("habilitada") else "Não"
+        status_txt = ie.get("status_texto") or ""
+        tipo_txt = ie.get("tipo_texto") or ""
+        blocks.append(f"UF: {uf} | IE: {numero} | Habilitada: {habil} | Status: {status_txt} | Tipo: {tipo_txt}")
+    return " || ".join(blocks)
+
+def build_csv_bytes(row_dict: dict, field_order: list) -> bytes:
+    """
+    Gera um CSV (em bytes) com uma única linha usando os campos na ordem especificada.
+    """
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=field_order, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerow({k: ("" if row_dict.get(k) is None else str(row_dict.get(k))) for k in field_order})
+    return buf.getvalue().encode("utf-8-sig")  # BOM p/ Excel PT-BR
+
 # ---------- UI ----------
 st.image(str(IMAGE_DIR / "logo_main.png"), width=150)
 st.markdown("<h1 style='text-align: center;'>Consulta de CNPJ</h1>", unsafe_allow_html=True)
@@ -331,3 +362,52 @@ if st.button("Consultar CNPJ"):
                             st.write(f"**Habilitada:** {'Sim' if habilitada else 'Não'}")
                             st.write(f"**Status:** {ie.get('status_texto', 'N/A')}")
                             st.write(f"**Tipo:** {ie.get('tipo_texto', 'N/A')}")
+
+                # ======== 7) EXPORTAÇÃO CSV ========
+                st.markdown("---")
+                st.subheader("Exportação")
+                # monta linha para CSV com nomes de colunas legíveis
+                cnae_cod = dados_cnpj.get('cnae_fiscal', '')
+                cnae_desc = dados_cnpj.get('cnae_fiscal_descricao', '')
+                tel1 = format_phone(dados_cnpj.get('ddd_telefone_1'), dados_cnpj.get('telefone_1'))
+                tel2 = format_phone(dados_cnpj.get('ddd_telefone_2'), dados_cnpj.get('telefone_2'))
+                csv_row = {
+                    "CNPJ": format_cnpj_mask(dados_cnpj.get('cnpj', '')),
+                    "Razão Social": razao,
+                    "Nome Fantasia": dados_cnpj.get('nome_fantasia', ''),
+                    "Situação Cadastral": sit_norm.title() if sit_norm != "N/A" else "",
+                    "Regime Tributário": regime_final,
+                    "Data Início Atividade": dados_cnpj.get('data_inicio_atividade', ''),
+                    "CNAE Fiscal Código": cnae_cod if cnae_cod is not None else "",
+                    "CNAE Fiscal Descrição": cnae_desc if cnae_desc is not None else "",
+                    "Porte": dados_cnpj.get('porte', ''),
+                    "Natureza Jurídica": dados_cnpj.get('natureza_juridica', ''),
+                    "Capital Social": dados_cnpj.get('capital_social', ''),  # valor bruto p/ CSV
+                    "Email": dados_cnpj.get('email', ''),
+                    "Telefone 1": "" if tel1 == "N/A" else tel1,
+                    "Telefone 2": "" if tel2 == "N/A" else tel2,
+                    "Logradouro": f"{dados_cnpj.get('descricao_tipo_de_logradouro','') or ''} {dados_cnpj.get('logradouro','') or ''}".strip(),
+                    "Número": dados_cnpj.get('numero', ''),
+                    "Complemento": dados_cnpj.get('complemento', ''),
+                    "Bairro": dados_cnpj.get('bairro', ''),
+                    "Município": dados_cnpj.get('municipio', ''),
+                    "UF": dados_cnpj.get('uf', ''),
+                    "CEP": dados_cnpj.get('cep', ''),
+                    "Inscrições Estaduais": join_ies_for_csv(ies) if ies else "",
+                    "Data/Hora da Consulta": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                }
+                csv_cols = [
+                    "CNPJ","Razão Social","Nome Fantasia","Situação Cadastral","Regime Tributário",
+                    "Data Início Atividade","CNAE Fiscal Código","CNAE Fiscal Descrição","Porte",
+                    "Natureza Jurídica","Capital Social","Email","Telefone 1","Telefone 2",
+                    "Logradouro","Número","Complemento","Bairro","Município","UF","CEP",
+                    "Inscrições Estaduais","Data/Hora da Consulta"
+                ]
+                csv_bytes = build_csv_bytes(csv_row, csv_cols)
+                st.download_button(
+                    label="📤 Exportar CSV",
+                    data=csv_bytes,
+                    file_name=f"CNPJ_{only_digits(dados_cnpj.get('cnpj',''))}.csv",
+                    mime="text/csv",
+                    help="Baixa um CSV com todas as informações principais deste CNPJ"
+                )

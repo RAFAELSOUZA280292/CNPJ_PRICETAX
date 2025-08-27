@@ -42,7 +42,7 @@ def format_cnpj_mask(cnpj: str) -> str:
     c = only_digits(cnpj)
     return f"{c[0:2]}.{c[2:5]}.{c[5:8]}/{c[8:12]}-{c[12:14]}" if len(c) == 14 else cnpj
 
-# ---------------- MATRIZ utils ----------------
+# ---------- matriz utils ----------
 def calcular_digitos_verificadores_cnpj(cnpj_base_12_digitos: str) -> str:
     pesos_12 = [5,4,3,2,9,8,7,6,5,4,3,2]
     pesos_13 = [6,5,4,3,2,9,8,7,6,5,4,3,2]
@@ -64,15 +64,15 @@ def to_matriz_if_filial(cnpj_clean: str) -> str:
         return base12 + dvs
     return cnpj_clean
 
-# ---------------- Consultas (com mensagens limpas) ----------------
+# ---------- consultas com mensagens limpas ----------
 @st.cache_data(ttl=3600, show_spinner=False)
 def consulta_brasilapi_cnpj(cnpj_limpo: str):
     try:
         r = requests.get(f"{URL_BRASILAPI_CNPJ}{cnpj_limpo}", timeout=15)
         if r.status_code in (400, 404):
-            return {"__error": "not_found"}  # CNPJ inválido ou não encontrado
+            return {"__error": "not_found"}
         if r.status_code in (429, 500, 502, 503, 504):
-            return {"__error": "unavailable"}  # serviço indisponível/limite
+            return {"__error": "unavailable"}
         r.raise_for_status()
         return r.json()
     except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
@@ -103,16 +103,16 @@ def consulta_ie_open_cnpja(cnpj_limpo: str, max_retries: int = 2):
                     })
                 return ies
             if resp.status_code == 404:
-                return []  # sem IE
+                return []
             if resp.status_code == 429 and attempt < max_retries:
                 time.sleep(2 * (attempt + 1)); attempt += 1; continue
-            return None  # indisponível
+            return None
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
             return None
         except Exception:
             return None
 
-# ---------------- Regime unificado + badge ----------------
+# ---------- regime unificado + badges ----------
 def determinar_regime_unificado(dados_cnpj: dict) -> str:
     is_mei = dados_cnpj.get("opcao_pelo_mei")
     if is_mei: return "MEI"
@@ -134,22 +134,25 @@ def determinar_regime_unificado(dados_cnpj: dict) -> str:
 
 def badge_cor(regime: str):
     r = (regime or "").upper()
-    if "MEI" in r: return "#FB923C", "#111111"     # laranja
-    if "SIMPLES" in r: return "#FACC15", "#111111" # amarelo
+    if "MEI" in r: return "#FB923C", "#111111"        # laranja
+    if "SIMPLES" in r: return "#FACC15", "#111111"    # amarelo
     if "LUCRO REAL" in r: return "#3B82F6", "#FFFFFF" # azul
     if "LUCRO PRESUMIDO" in r: return "#22C55E", "#111111" # verde
-    return "#EF4444", "#FFFFFF"                    # vermelho
+    return "#EF4444", "#FFFFFF"                       # vermelho
 
-def render_regime_badge(regime: str):
-    bg, fg = badge_cor(regime)
+def render_badge(texto: str, bg: str, fg: str):
     st.markdown(
         f"""<div style="display:inline-block;padding:8px 12px;border-radius:999px;font-weight:800;letter-spacing:.3px;background:{bg};color:{fg};">
-            {regime}
+            {texto}
         </div>""",
         unsafe_allow_html=True
     )
 
-# ---------------- UI ----------------
+def render_regime_badge(regime: str):
+    bg, fg = badge_cor(regime)
+    render_badge(regime, bg, fg)
+
+# ---------- UI ----------
 st.image(str(IMAGE_DIR / "logo_main.png"), width=150)
 st.markdown("<h1 style='text-align: center;'>Consulta de CNPJ</h1>", unsafe_allow_html=True)
 
@@ -170,14 +173,12 @@ if st.button("Consultar CNPJ"):
             with st.spinner(f"Consultando CNPJ {format_cnpj_mask(cnpj_limpo)}..."):
                 dados_cnpj = consulta_brasilapi_cnpj(cnpj_limpo)
 
-                # ------ NOT FOUND / indisponível (mensagens limpas) ------
                 if isinstance(dados_cnpj, dict) and dados_cnpj.get("__error") == "not_found":
                     st.error("CNPJ inválido ou não encontrado. Verifique os dígitos e tente novamente.")
                     st.stop()
                 if isinstance(dados_cnpj, dict) and dados_cnpj.get("__error") == "unavailable":
                     st.error("Serviço temporariamente indisponível. Tente novamente em alguns instantes.")
                     st.stop()
-
                 if not isinstance(dados_cnpj, dict) or "cnpj" not in dados_cnpj:
                     st.error("Não foi possível concluir a consulta no momento.")
                     st.stop()
@@ -185,7 +186,7 @@ if st.button("Consultar CNPJ"):
                 st.success(f"Dados encontrados para o CNPJ: {format_cnpj_mask(dados_cnpj.get('cnpj','N/A'))}")
                 st.image(str(IMAGE_DIR / "logo_resultado.png"), width=100)
 
-                # ======== 1) REGIME TRIBUTÁRIO via MATRIZ (silencioso) ========
+                # ======== 1) REGIME TRIBUTÁRIO via MATRIZ ========
                 st.markdown("---")
                 st.markdown("## Regime Tributário")
 
@@ -195,10 +196,21 @@ if st.button("Consultar CNPJ"):
                     dados_matriz = consulta_brasilapi_cnpj(cnpj_matriz)
                     if isinstance(dados_matriz, dict) and not dados_matriz.get("__error") and "cnpj" in dados_matriz:
                         regime_source = dados_matriz
+
                 regime_final = determinar_regime_unificado(regime_source)
                 render_regime_badge(regime_final)
 
-                # ======== 2) DADOS DA EMPRESA (do CNPJ consultado) ========
+                # ======== 1.1) REFORMA TRIBUTÁRIA — badges em construção ========
+                # Situação para créditos IBS/CBS (sempre aparece, amarelo)
+                st.write("")  # pequeno espaço
+                render_badge("Situação do Fornecedor para crédito de CBS e IBS: Em construção", "#FACC15", "#111111")
+
+                # Se for exclusivamente Simples Nacional (não MEI), mostra também o regime do Simples (Regular/Normal)
+                if regime_final.upper() == "SIMPLES NACIONAL":
+                    st.write("")
+                    render_badge("Regime do Simples (Regular ou Normal): Em construção", "#FACC15", "#111111")
+
+                # ======== 2) DADOS DA EMPRESA ========
                 st.markdown("---")
                 st.markdown("## Dados da Empresa")
                 col1, col2 = st.columns(2)

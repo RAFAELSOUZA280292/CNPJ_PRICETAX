@@ -132,7 +132,7 @@ def determinar_regime_unificado(dados_cnpj: dict) -> str:
         return str(forma).upper()
     return "N/A"
 
-def badge_cor(regime: str):
+def badge_cor_regime(regime: str):
     r = (regime or "").upper()
     if "MEI" in r: return "#FB923C", "#111111"        # laranja
     if "SIMPLES" in r: return "#FACC15", "#111111"    # amarelo
@@ -149,8 +149,36 @@ def render_badge(texto: str, bg: str, fg: str):
     )
 
 def render_regime_badge(regime: str):
-    bg, fg = badge_cor(regime)
+    bg, fg = badge_cor_regime(regime)
     render_badge(regime, bg, fg)
+
+# ---------- Situação Cadastral (badge colorido) ----------
+def normalizar_situacao_cadastral(txt: str) -> str:
+    """
+    Normaliza para: ATIVO / INAPTO / SUSPENSO / BAIXADO / N/A
+    Aceita variações 'ATIVA', 'SUSPENSA', etc.
+    """
+    s = (txt or "").strip().upper()
+    if not s:
+        return "N/A"
+    if "ATIV" in s:       return "ATIVO"
+    if "INAPT" in s:      return "INAPTO"
+    if "SUSP" in s:       return "SUSPENSO"
+    if "BAIX" in s:       return "BAIXADO"
+    return s  # mantém qualquer outro valor sem quebrar
+
+def badge_cor_situacao(status_norm: str):
+    s = (status_norm or "").upper()
+    if s == "ATIVO":     return "#22C55E", "#111111"  # verde
+    if s == "INAPTO":    return "#FACC15", "#111111"  # amarelo
+    if s == "SUSPENSO":  return "#FB923C", "#111111"  # laranja
+    if s == "BAIXADO":   return "#EF4444", "#FFFFFF"  # vermelho
+    # default neutro
+    return "#6B7280", "#FFFFFF"                      # cinza
+
+def render_situacao_badge(label: str, valor: str):
+    bg, fg = badge_cor_situacao(valor)
+    render_badge(f"{label}: {valor.title()}", bg, fg)
 
 # ---------- UI ----------
 st.image(str(IMAGE_DIR / "logo_main.png"), width=150)
@@ -186,6 +214,13 @@ if st.button("Consultar CNPJ"):
                 st.success(f"Dados encontrados para o CNPJ: {format_cnpj_mask(dados_cnpj.get('cnpj','N/A'))}")
                 st.image(str(IMAGE_DIR / "logo_resultado.png"), width=100)
 
+                # ======== (NOVO) RAZÃO SOCIAL – destaque acima do regime ========
+                razao = dados_cnpj.get('razao_social', 'N/A')
+                st.markdown(
+                    f"<div style='text-align:center; font-size: 1.6rem; font-weight: 800; color: #FFC300; margin: 6px 0 2px 0;'>{razao}</div>",
+                    unsafe_allow_html=True
+                )
+
                 # ======== 1) REGIME TRIBUTÁRIO via MATRIZ ========
                 st.markdown("---")
                 st.markdown("## Regime Tributário")
@@ -201,11 +236,8 @@ if st.button("Consultar CNPJ"):
                 render_regime_badge(regime_final)
 
                 # ======== 1.1) REFORMA TRIBUTÁRIA — badges em construção ========
-                # Situação para créditos IBS/CBS (sempre aparece, amarelo)
-                st.write("")  # pequeno espaço
+                st.write("")
                 render_badge("Situação do Fornecedor para crédito de CBS e IBS: Em construção", "#FACC15", "#111111")
-
-                # Se for exclusivamente Simples Nacional (não MEI), mostra também o regime do Simples (Regular/Normal)
                 if regime_final.upper() == "SIMPLES NACIONAL":
                     st.write("")
                     render_badge("Regime do Simples (Regular ou Normal): Em construção", "#FACC15", "#111111")
@@ -215,10 +247,15 @@ if st.button("Consultar CNPJ"):
                 st.markdown("## Dados da Empresa")
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.write(f"**Razão Social:** {dados_cnpj.get('razao_social', 'N/A')}")
+                    st.write(f"**Razão Social:** {razao}")
                     st.write(f"**Nome Fantasia:** {dados_cnpj.get('nome_fantasia', 'N/A')}")
                     st.write(f"**CNPJ:** {format_cnpj_mask(dados_cnpj.get('cnpj', 'N/A'))}")
-                    st.write(f"**Situação Cadastral:** {dados_cnpj.get('descricao_situacao_cadastral', 'N/A')}")
+
+                    # (NOVO) Situação Cadastral com badge colorido
+                    sit_raw = dados_cnpj.get('descricao_situacao_cadastral', 'N/A')
+                    sit_norm = normalizar_situacao_cadastral(sit_raw)
+                    render_situacao_badge("Situação Cadastral", sit_norm)
+
                     st.write(f"**Data Início Atividade:** {dados_cnpj.get('data_inicio_atividade', 'N/A')}")
                     st.write(f"**CNAE Fiscal:** {dados_cnpj.get('cnae_fiscal_descricao', 'N/A')} ({dados_cnpj.get('cnae_fiscal', 'N/A')})")
                     st.write(f"**Porte:** {dados_cnpj.get('porte', 'N/A')}")
@@ -260,13 +297,14 @@ if st.button("Consultar CNPJ"):
                     st.info("Não há informações de QSA disponíveis.")
 
                 # ======== 5) CNAEs Secundários ========
+                st.markdown("---")
+                st.markdown("## CNAEs Secundários")
                 if dados_cnpj.get('cnaes_secundarios'):
-                    st.markdown("---")
-                    st.markdown("## CNAEs Secundários")
                     for cnae in dados_cnpj['cnaes_secundarios']:
                         st.markdown(f"- **{cnae.get('codigo', 'N/A')}**: {cnae.get('descricao', 'N/A')}")
                 else:
-                    st.info("Não há CNAEs secundários informados.")
+                    # (NOVO) Texto amigável quando não houver CNAEs secundários
+                    st.info("Nenhum CNAE secundário encontrado para este CNPJ.")
 
                 # ======== 6) Inscrições Estaduais (open.cnpja) ========
                 st.markdown("---")
